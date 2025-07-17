@@ -1,0 +1,18 @@
+Metric,Value
+Total Frames,160
+Frames with Faces,134
+Session Duration (seconds),12.126523494720459
+Angry Detections,0
+Angry Percentage,0.0%
+Disgust Detections,0
+Disgust Percentage,0.0%
+Fear Detections,0
+Fear Percentage,0.0%
+Happy Detections,20
+Happy Percentage,14.9%
+Neutral Detections,99
+Neutral Percentage,73.9%
+Sad Detections,7
+Sad Percentage,5.2%
+Surprise Detections,8
+Surprise Percentage,6.0%

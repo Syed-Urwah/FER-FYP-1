@@ -1,0 +1,23 @@
+============================================================
+FACIAL EXPRESSION RECOGNITION SESSION REPORT
+============================================================
+
+Session Duration: 12.13 seconds
+Total Frames Processed: 160
+Frames with Faces Detected: 134 (83.8%)
+
+Emotion Detection Statistics:
+--------------------------------------------------
+Angry     :    0 detections (0.0%)
+Disgust   :    0 detections (0.0%)
+Fear      :    0 detections (0.0%)
+Happy     :   20 detections (14.9%)
+Neutral   :   99 detections (73.9%)
+Sad       :    7 detections (5.2%)
+Surprise  :    8 detections (6.0%)
+
+Most common emotion: Neutral (99 detections)
+
+============================================================
+Report generated at: 2025-07-17 18:06:00
+============================================================
