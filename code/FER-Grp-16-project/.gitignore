@@ -1,0 +1,65 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.venv/
+env/
+venv/
+
+# IDE configuration files
+.idea/
+.vscode/
+
+# --- Project Specific --- 
+
+# Datasets (downloaded and extracted)
+CK_plus_dataset/
+FER 2013/test/
+FER 2013/train/*
+!FER 2013/train/*.rar
+
+# Ignore the .rar archives too if you don't want them in git
+# FER 2013/test.rar
+# FER 2013/train/*.rar
+
+# Generated Models
+*.h5
+tfjs_model/
+
+# Reports and Logs
+reports/
+*.csv
+*.log
+
+# Results
+Results/
+
+# Ignore the presentation and viva files we created if desired
+# presentation.md
+# viva_questions.md
+# add_new_dataset.py
+# add_sorted_data.py
