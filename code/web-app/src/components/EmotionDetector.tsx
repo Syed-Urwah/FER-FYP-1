@@ -20,7 +20,7 @@ export default function EmotionDetector() {
     const [dominantEmotion, setDominantEmotion] = useState<Emotion>('Neutral');
     const [predictions, setPredictions] = useState<number[]>(new Array(7).fill(0));
     const [fps, setFps] = useState(0);
-    const requestRef = useRef<number>();
+    const requestRef = useRef<number | null>(null);
     const lastTimeRef = useRef<number>(0);
 
     const detectEmotion = useCallback(async () => {
