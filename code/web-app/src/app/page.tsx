@@ -1,3 +1,4 @@
+import Header from '@/components/Header';
 import EmotionDetector from '@/components/EmotionDetector';
 import Dashboard from '@/components/Dashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -5,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 export default function Home() {
   return (
     <main className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+      <Header />
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="text-center">
           <h1 className="text-4xl font-extrabold text-slate-900 sm:text-5xl sm:tracking-tight lg:text-6xl">

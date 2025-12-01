@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { EMOTION_COLORS, EMOTION_EMOJIS, Emotion } from '@/lib/constants';
 import { format } from 'date-fns';
@@ -82,6 +84,11 @@ export default function Dashboard() {
                                 ))}
                             </div>
                         </CardContent>
+                        <div className="p-4 flex justify-end">
+                            <Link href={`/report/${report._id}`} passHref>
+                                <Button variant="outline" size="sm">View Details</Button>
+                            </Link>
+                        </div>
                     </Card>
                 ))}
             </div>
