@@ -22,7 +22,7 @@ export const authOptions: any = {
 
                 await dbConnect();
 
-                const user = await User.findOne({ email: credentials.email });
+                const user: any = await User.findOne({ email: credentials.email });
 
                 if (!user) {
                     return null;
