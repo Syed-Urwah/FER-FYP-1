@@ -6,13 +6,13 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableCell, TableHead } from "@/components/ui/table";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { EMOTIONS, EMOTION_EMOJIS, EMOTION_COLORS } from "@/lib/constants";
+import { EMOTIONS, EMOTION_EMOJIS, EMOTION_COLORS, Emotion } from "@/lib/constants";
 import Link from "next/link";
 
 interface ReportData {
     _id: string;
     timestamp: string;
-    dominantEmotion: string;
+    dominantEmotion: Emotion;
     predictions: number[];
     snapshot?: string;
 }
@@ -56,12 +56,15 @@ export default function ReportDetail() {
     // if (error) return notFound();
     if (!report) return <div className="text-center p-8">Loading report...</div>;
 
-    const chartData: ChartItem[] = report.predictions.map((value, idx) => ({
-        emotion: EMOTIONS[idx] ?? `Emotion ${idx}`,
-        confidence: Number((value * 100).toFixed(2)),
-        color: EMOTION_COLORS[EMOTIONS[idx] as any] ?? "#8884d8",
-        emoji: EMOTION_EMOJIS[EMOTIONS[idx] as any] ?? "❓",
-    }));
+    const chartData: ChartItem[] = report.predictions.map((value, idx) => {
+        const emotionName = EMOTIONS[idx];
+        return {
+            emotion: emotionName ?? `Emotion ${idx}`,
+            confidence: Number((value * 100).toFixed(2)),
+            color: emotionName ? EMOTION_COLORS[emotionName] : "#8884d8",
+            emoji: emotionName ? EMOTION_EMOJIS[emotionName] : "❓",
+        };
+    });
 
     const csvContent = `timestamp,dominantEmotion,${EMOTIONS.join(",")},snapshot\n` +
         `${new Date(report.timestamp).toISOString()},${report.dominantEmotion},${report.predictions.join(",")},${report.snapshot ?? ""}`;
@@ -93,8 +96,8 @@ export default function ReportDetail() {
             </CardHeader>
             <CardContent className="space-y-6">
                 <div className="flex items-center space-x-4">
-                    <span className="text-3xl">{EMOTION_EMOJIS[report.dominantEmotion as any] ?? "❓"}</span>
-                    <h2 className={`text-2xl font-semibold ${EMOTION_COLORS[report.dominantEmotion as any] ?? "text-gray-800"}`}>
+                    <span className="text-3xl">{EMOTION_EMOJIS[report.dominantEmotion] ?? "❓"}</span>
+                    <h2 className={`text-2xl font-semibold ${EMOTION_COLORS[report.dominantEmotion] ?? "text-gray-800"}`}>
                         Dominant Emotion: {report.dominantEmotion}
                     </h2>
                 </div>

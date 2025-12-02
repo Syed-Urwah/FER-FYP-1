@@ -4,9 +4,9 @@ import Report from '@/models/Report';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const session: any = await getServerSession(authOptions);
-        const resolvedParams = await params;
+    const resolvedParams = await params;
     const reportId = resolvedParams.id;
     if (!session?.user?.email) {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
