@@ -66,8 +66,9 @@ export default function ReportDetail() {
         };
     });
 
+    const formattedPredictions = report.predictions.map(p => (p * 100).toFixed(2)).join(",");
     const csvContent = `timestamp,dominantEmotion,${EMOTIONS.join(",")},snapshot\n` +
-        `${new Date(report.timestamp).toISOString()},${report.dominantEmotion},${report.predictions.join(",")},${report.snapshot ?? ""}`;
+        `${new Date(report.timestamp).toISOString()},${report.dominantEmotion},${formattedPredictions},${report.snapshot ?? ""}`;
 
     const downloadCsv = () => {
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
