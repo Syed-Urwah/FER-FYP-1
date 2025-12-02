@@ -3,9 +3,9 @@ export const EMOTIONS = [
     'Disgust',
     'Fear',
     'Happy',
+    'Neutral',
     'Sad',
-    'Surprise',
-    'Neutral'
+    'Surprise'
 ] as const;
 
 export type Emotion = typeof EMOTIONS[number];

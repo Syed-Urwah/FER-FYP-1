@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as tf from '@tensorflow/tfjs';
+import * as blazeface from '@tensorflow-models/blazeface';
 import Webcam from 'react-webcam';
 import Camera from './Camera';
 import { useEmotionModel } from '@/hooks/useEmotionModel';
@@ -14,7 +15,9 @@ import { Play, Square, Camera as CameraIcon } from 'lucide-react';
 
 export default function EmotionDetector() {
     const webcamRef = useRef<Webcam>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     const { model, isLoading: isModelLoading, error: modelError } = useEmotionModel();
+    const [faceModel, setFaceModel] = useState<blazeface.BlazeFaceModel | null>(null);
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [dominantEmotion, setDominantEmotion] = useState<Emotion>('Neutral');
@@ -23,16 +26,38 @@ export default function EmotionDetector() {
     const requestRef = useRef<number | null>(null);
     const lastTimeRef = useRef<number>(0);
 
+    // Load BlazeFace model
+    useEffect(() => {
+        async function loadFaceModel() {
+            try {
+                await tf.ready();
+                const loadedModel = await blazeface.load();
+                setFaceModel(loadedModel);
+                console.log('BlazeFace model loaded');
+            } catch (err) {
+                console.error('Failed to load BlazeFace model:', err);
+            }
+        }
+        loadFaceModel();
+    }, []);
+
     const detectEmotion = useCallback(async () => {
         if (
             typeof webcamRef.current !== "undefined" &&
             webcamRef.current !== null &&
             webcamRef.current.video?.readyState === 4 &&
-            model
+            model &&
+            faceModel
         ) {
             const video = webcamRef.current.video;
             const videoWidth = video.videoWidth;
             const videoHeight = video.videoHeight;
+
+            // Ensure canvas matches video dimensions
+            if (canvasRef.current) {
+                canvasRef.current.width = videoWidth;
+                canvasRef.current.height = videoHeight;
+            }
 
             // Performance monitoring
             const now = performance.now();
@@ -42,30 +67,85 @@ export default function EmotionDetector() {
                 lastTimeRef.current = now;
             }
 
-            // Preprocess image
-            const tfImg = tf.browser.fromPixels(video);
-            // Resize to 48x48 and convert to grayscale
-            const resized = tf.image.resizeBilinear(tfImg, [48, 48]);
-            const gray = resized.mean(2).expandDims(2).expandDims(0); // [1, 48, 48, 1]
-            const normalized = gray.div(255.0);
+            // Detect faces
+            const returnTensors = false;
+            const predictions = await faceModel.estimateFaces(video, returnTensors);
 
-            // Inference
-            const prediction = model.predict(normalized) as tf.Tensor;
-            const data = await prediction.data();
+            const ctx = canvasRef.current?.getContext('2d');
+            if (ctx) {
+                ctx.clearRect(0, 0, videoWidth, videoHeight);
+            }
 
-            // Cleanup tensors
-            tfImg.dispose();
-            resized.dispose();
-            gray.dispose();
-            normalized.dispose();
-            prediction.dispose();
+            if (predictions.length > 0) {
+                // Use the first detected face
+                const start = predictions[0].topLeft as [number, number];
+                const end = predictions[0].bottomRight as [number, number];
+                const size = [end[0] - start[0], end[1] - start[1]];
 
-            // Update state
-            const predArray = Array.from(data);
-            setPredictions(predArray);
+                // Draw bounding box
+                if (ctx) {
+                    ctx.beginPath();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#00ff00';
+                    ctx.rect(start[0], start[1], size[0], size[1]);
+                    ctx.stroke();
+                }
 
-            const maxIndex = predArray.indexOf(Math.max(...predArray));
-            setDominantEmotion(EMOTIONS[maxIndex]);
+                // Extract face tensor
+                const tfImg = tf.browser.fromPixels(video);
+
+                // Crop the face
+                // tf.image.cropAndResize requires normalized coordinates [y1, x1, y2, x2]
+                // But simpler approach is to slice the tensor directly if we have pixel coords
+                // Tensor is [height, width, 3]
+                // Slice: [y, x, 0], [h, w, 3]
+
+                // Ensure coordinates are within bounds
+                const x1 = Math.max(0, Math.floor(start[0]));
+                const y1 = Math.max(0, Math.floor(start[1]));
+                const width = Math.min(videoWidth - x1, Math.floor(size[0]));
+                const height = Math.min(videoHeight - y1, Math.floor(size[1]));
+
+                if (width > 0 && height > 0) {
+                    const faceTensor = tfImg.slice([y1, x1, 0], [height, width, 3]);
+
+                    // Resize to 48x48
+                    const resized = tf.image.resizeBilinear(faceTensor, [48, 48]);
+
+                    // Convert to grayscale using standard weights (0.299*R + 0.587*G + 0.114*B)
+                    // This matches OpenCV's cvtColor(BGR2GRAY) behavior
+                    const rgb = resized.div(255.0);
+                    const r = rgb.slice([0, 0, 0], [48, 48, 1]);
+                    const g = rgb.slice([0, 0, 1], [48, 48, 1]);
+                    const b = rgb.slice([0, 0, 2], [48, 48, 1]);
+
+                    const gray = r.mul(0.299).add(g.mul(0.587)).add(b.mul(0.114));
+                    const normalized = gray.expandDims(0); // [1, 48, 48, 1]
+
+                    // Inference
+                    const prediction = model.predict(normalized) as tf.Tensor;
+                    const data = await prediction.data();
+
+                    // Cleanup tensors
+                    faceTensor.dispose();
+                    resized.dispose();
+                    gray.dispose();
+                    normalized.dispose();
+                    prediction.dispose();
+
+                    // Update state
+                    const predArray = Array.from(data);
+                    setPredictions(predArray);
+
+                    const maxIndex = predArray.indexOf(Math.max(...predArray));
+                    setDominantEmotion(EMOTIONS[maxIndex]);
+                }
+
+                tfImg.dispose();
+            } else {
+                // No face detected
+                // Optionally reset emotion or keep last known
+            }
 
             if (isAnalyzing) {
                 requestRef.current = requestAnimationFrame(detectEmotion);
@@ -74,10 +154,10 @@ export default function EmotionDetector() {
             // Retry if video not ready
             requestRef.current = requestAnimationFrame(detectEmotion);
         }
-    }, [model, isAnalyzing]);
+    }, [model, faceModel, isAnalyzing]);
 
     useEffect(() => {
-        if (isAnalyzing && model) {
+        if (isAnalyzing && model && faceModel) {
             requestRef.current = requestAnimationFrame(detectEmotion);
         } else {
             if (requestRef.current) {
@@ -89,7 +169,7 @@ export default function EmotionDetector() {
                 cancelAnimationFrame(requestRef.current);
             }
         };
-    }, [isAnalyzing, model, detectEmotion]);
+    }, [isAnalyzing, model, faceModel, detectEmotion]);
 
     const saveReport = async () => {
         if (!model) return;
@@ -148,12 +228,18 @@ export default function EmotionDetector() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-4">
-                        <Camera ref={webcamRef} />
+                        <div className="relative">
+                            <Camera ref={webcamRef} />
+                            <canvas
+                                ref={canvasRef}
+                                className="absolute top-0 left-0 w-full h-full pointer-events-none transform scale-x-[-1]"
+                            />
+                        </div>
 
                         <div className="flex justify-center mt-6 gap-4">
                             <Button
                                 onClick={toggleAnalysis}
-                                disabled={isModelLoading}
+                                disabled={isModelLoading || !faceModel}
                                 size="lg"
                                 className={isAnalyzing ? "bg-red-500 hover:bg-red-600" : "bg-indigo-600 hover:bg-indigo-700"}
                             >
