@@ -38,6 +38,7 @@ venv/
 
 # Datasets (downloaded and extracted)
 CK_plus_dataset/
+CK_plus_dataset_sorted/
 FER 2013/test/
 FER 2013/train/*
 !FER 2013/train/*.rar
