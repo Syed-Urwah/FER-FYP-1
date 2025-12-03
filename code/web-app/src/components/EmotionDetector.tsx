@@ -6,23 +6,26 @@ import * as blazeface from '@tensorflow-models/blazeface';
 import Webcam from 'react-webcam';
 import Camera from './Camera';
 import { useEmotionModel } from '@/hooks/useEmotionModel';
+import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { EMOTIONS, EMOTION_COLORS, EMOTION_EMOJIS, Emotion } from '@/lib/constants';
-import { Play, Square, Camera as CameraIcon } from 'lucide-react';
+import { Play, Square, Camera as CameraIcon, Mic } from 'lucide-react';
 
 export default function EmotionDetector() {
     const webcamRef = useRef<Webcam>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const { model, isLoading: isModelLoading, error: modelError } = useEmotionModel();
+    const { startAudio, stopAudio, getAudioFeatures, isListening } = useAudioAnalysis();
     const [faceModel, setFaceModel] = useState<blazeface.BlazeFaceModel | null>(null);
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [dominantEmotion, setDominantEmotion] = useState<Emotion>('Neutral');
     const [predictions, setPredictions] = useState<number[]>(new Array(7).fill(0));
     const [fps, setFps] = useState(0);
+    const [audioLevel, setAudioLevel] = useState(0);
     const requestRef = useRef<number | null>(null);
     const lastTimeRef = useRef<number>(0);
 
@@ -95,12 +98,6 @@ export default function EmotionDetector() {
                 const tfImg = tf.browser.fromPixels(video);
 
                 // Crop the face
-                // tf.image.cropAndResize requires normalized coordinates [y1, x1, y2, x2]
-                // But simpler approach is to slice the tensor directly if we have pixel coords
-                // Tensor is [height, width, 3]
-                // Slice: [y, x, 0], [h, w, 3]
-
-                // Ensure coordinates are within bounds
                 const x1 = Math.max(0, Math.floor(start[0]));
                 const y1 = Math.max(0, Math.floor(start[1]));
                 const width = Math.min(videoWidth - x1, Math.floor(size[0]));
@@ -112,8 +109,7 @@ export default function EmotionDetector() {
                     // Resize to 48x48
                     const resized = tf.image.resizeBilinear(faceTensor, [48, 48]);
 
-                    // Convert to grayscale using standard weights (0.299*R + 0.587*G + 0.114*B)
-                    // This matches OpenCV's cvtColor(BGR2GRAY) behavior
+                    // Convert to grayscale
                     const rgb = resized.div(255.0);
                     const r = rgb.slice([0, 0, 0], [48, 48, 1]);
                     const g = rgb.slice([0, 0, 1], [48, 48, 1]);
@@ -133,8 +129,29 @@ export default function EmotionDetector() {
                     normalized.dispose();
                     prediction.dispose();
 
-                    // Update state
-                    const predArray = Array.from(data);
+                    // --- Multimodal Fusion Logic ---
+                    let predArray = Array.from(data);
+
+                    // Get Audio Features
+                    const audioFeatures = getAudioFeatures();
+                    setAudioLevel(audioFeatures.volume);
+
+                    if (audioFeatures.isLoud) {
+                        // Heuristic: Loud audio boosts high arousal emotions
+                        // Angry (0), Fear (2), Happy (3), Surprise (5)
+                        const boostFactor = 0.2 * audioFeatures.volume;
+                        predArray[0] += boostFactor; // Angry
+                        predArray[3] += boostFactor; // Happy
+                        predArray[5] += boostFactor; // Surprise
+                    } else {
+                        // Quiet audio might imply Sad (4) or Neutral (6)
+                        // But we don't want to force it too much, just slight bias
+                    }
+
+                    // Re-normalize (softmax-ish)
+                    const sum = predArray.reduce((a, b) => a + b, 0);
+                    predArray = predArray.map(p => p / sum);
+
                     setPredictions(predArray);
 
                     const maxIndex = predArray.indexOf(Math.max(...predArray));
@@ -144,7 +161,6 @@ export default function EmotionDetector() {
                 tfImg.dispose();
             } else {
                 // No face detected
-                // Optionally reset emotion or keep last known
             }
 
             if (isAnalyzing) {
@@ -154,22 +170,25 @@ export default function EmotionDetector() {
             // Retry if video not ready
             requestRef.current = requestAnimationFrame(detectEmotion);
         }
-    }, [model, faceModel, isAnalyzing]);
+    }, [model, faceModel, isAnalyzing, getAudioFeatures]);
 
     useEffect(() => {
         if (isAnalyzing && model && faceModel) {
+            startAudio();
             requestRef.current = requestAnimationFrame(detectEmotion);
         } else {
+            stopAudio();
             if (requestRef.current) {
                 cancelAnimationFrame(requestRef.current);
             }
         }
         return () => {
+            stopAudio();
             if (requestRef.current) {
                 cancelAnimationFrame(requestRef.current);
             }
         };
-    }, [isAnalyzing, model, faceModel, detectEmotion]);
+    }, [isAnalyzing, model, faceModel, detectEmotion, startAudio, stopAudio]);
 
     const saveReport = async () => {
         if (!model) return;
@@ -220,11 +239,18 @@ export default function EmotionDetector() {
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center justify-between">
                             <span>Live Feed</span>
-                            {isAnalyzing && (
-                                <Badge variant="outline" className="animate-pulse text-green-600 border-green-200 bg-green-50">
-                                    Live Analysis
-                                </Badge>
-                            )}
+                            <div className="flex gap-2">
+                                {isListening && (
+                                    <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 flex items-center gap-1">
+                                        <Mic className="w-3 h-3" /> Audio Active
+                                    </Badge>
+                                )}
+                                {isAnalyzing && (
+                                    <Badge variant="outline" className="animate-pulse text-green-600 border-green-200 bg-green-50">
+                                        Live Analysis
+                                    </Badge>
+                                )}
+                            </div>
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="p-4">
@@ -234,6 +260,23 @@ export default function EmotionDetector() {
                                 ref={canvasRef}
                                 className="absolute top-0 left-0 w-full h-full pointer-events-none transform scale-x-[-1]"
                             />
+                            {/* Audio Visualizer Overlay */}
+                            {isListening && (
+                                <div className="absolute bottom-4 right-4 bg-black/50 p-2 rounded-lg backdrop-blur-sm">
+                                    <div className="flex items-end gap-1 h-8">
+                                        {[...Array(5)].map((_, i) => (
+                                            <div
+                                                key={i}
+                                                className="w-2 bg-green-400 rounded-t transition-all duration-75"
+                                                style={{
+                                                    height: `${Math.max(10, Math.min(100, audioLevel * 100 * (1 + Math.random())))}%`,
+                                                    opacity: 0.8
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex justify-center mt-6 gap-4">
@@ -261,7 +304,7 @@ export default function EmotionDetector() {
             <div className="space-y-4">
                 <Card className="h-full border-slate-200 shadow-sm">
                     <CardHeader>
-                        <CardTitle>Emotion Analysis</CardTitle>
+                        <CardTitle>Multimodal Analysis</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="text-center p-6 bg-slate-50 rounded-xl border border-slate-100">
@@ -271,7 +314,7 @@ export default function EmotionDetector() {
                             <h3 className={`text-3xl font-bold ${EMOTION_COLORS[dominantEmotion]}`}>
                                 {dominantEmotion}
                             </h3>
-                            <p className="text-slate-500 text-sm mt-1">Dominant Emotion</p>
+                            <p className="text-slate-500 text-sm mt-1">Combined Confidence</p>
                         </div>
 
                         <div className="space-y-3">
