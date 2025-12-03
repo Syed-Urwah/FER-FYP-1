@@ -5,7 +5,7 @@ import { notFound, useParams } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableCell, TableHead } from "@/components/ui/table";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, LabelList } from "recharts";
 import { EMOTIONS, EMOTION_EMOJIS, EMOTION_COLORS, Emotion } from "@/lib/constants";
 import Link from "next/link";
 
@@ -103,16 +103,54 @@ export default function ReportDetail() {
                     </h2>
                 </div>
                 {/* Chart */}
-                <div className="h-64 w-full">
-                    <ResponsiveContainer>
-                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                            <XAxis dataKey="emotion" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            {chartData.map((d, i) => (
-                                <Bar key={i} dataKey="confidence" fill={d.color} name={d.emotion} />
-                            ))}
+                {/* Chart */}
+                <div className="h-[400px] w-full mt-8">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                            <XAxis
+                                dataKey="emotion"
+                                axisLine={false}
+                                tickLine={false}
+                                tick={{ fill: '#6b7280', fontSize: 12 }}
+                                dy={10}
+                            />
+                            <YAxis
+                                axisLine={false}
+                                tickLine={false}
+                                tick={{ fill: '#6b7280', fontSize: 12 }}
+                                tickFormatter={(value) => `${value}%`}
+                            />
+                            <Tooltip
+                                cursor={{ fill: 'transparent' }}
+                                content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                        const data = payload[0].payload as ChartItem;
+                                        return (
+                                            <div className="bg-white p-3 border border-gray-100 shadow-lg rounded-lg">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-xl">{data.emoji}</span>
+                                                    <span className="font-semibold text-gray-900">{data.emotion}</span>
+                                                </div>
+                                                <div className="text-sm text-gray-500">
+                                                    Confidence: <span className="font-medium text-gray-900">{data.confidence}%</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                    return null;
+                                }}
+                            />
+                            <Bar
+                                dataKey="confidence"
+                                radius={[4, 4, 0, 0]}
+                                maxBarSize={60}
+                            >
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                                <LabelList dataKey="confidence" position="top" formatter={(value: any) => `${value}%`} style={{ fill: '#6b7280', fontSize: 12 }} />
+                            </Bar>
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
