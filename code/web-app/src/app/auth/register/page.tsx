@@ -6,11 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Spinner } from '@/components/ui/spinner';
 
 export default function Register() {
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState('');
     const router = useRouter();
 
@@ -19,6 +21,7 @@ export default function Register() {
         setError('');
 
         try {
+            setIsLoading(true)
             const res = await fetch('/api/register', {
                 method: 'POST',
                 headers: {
@@ -27,6 +30,7 @@ export default function Register() {
                 body: JSON.stringify({ name, email, password }),
             });
 
+            setIsLoading(false)
             if (res.ok) {
                 router.push('/auth/signin');
             } else {
@@ -77,7 +81,10 @@ export default function Register() {
                                 required
                             />
                         </div>
-                        <Button type="submit" className="w-full">Register</Button>
+                        <Button disabled={isLoading} type="submit" className="w-full">
+                            {isLoading ? <Spinner/> : "Register"}
+                            
+                        </Button>
                         <div className="text-center text-sm text-slate-500">
                             Already have an account? <Link href="/auth/signin" className="text-indigo-600 hover:underline">Sign in</Link>
                         </div>
