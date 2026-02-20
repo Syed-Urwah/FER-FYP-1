@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import * as tf from '@tensorflow/tfjs';
-import * as blazeface from '@tensorflow-models/blazeface';
 import Webcam from 'react-webcam';
+import * as faceapi from 'face-api.js';
 import Camera from './Camera';
-import { useEmotionModel } from '@/hooks/useEmotionModel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -13,11 +11,13 @@ import { Badge } from '@/components/ui/badge';
 import { EMOTIONS, EMOTION_COLORS, EMOTION_EMOJIS, Emotion } from '@/lib/constants';
 import { Play, Square, Camera as CameraIcon } from 'lucide-react';
 
+// Path to the directory where face-api.js models are hosted
+const MODEL_URL = '/model/face-api-models';
+
 export default function EmotionDetector() {
     const webcamRef = useRef<Webcam>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const { model, isLoading: isModelLoading, error: modelError } = useEmotionModel();
-    const [faceModel, setFaceModel] = useState<blazeface.BlazeFaceModel | null>(null);
+    const [isFaceApiModelsLoaded, setIsFaceApiModelsLoaded] = useState(false);
 
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [dominantEmotion, setDominantEmotion] = useState<Emotion>('Neutral');
@@ -26,19 +26,23 @@ export default function EmotionDetector() {
     const requestRef = useRef<number | null>(null);
     const lastTimeRef = useRef<number>(0);
 
-    // Load BlazeFace model
+    // Load face-api.js models
     useEffect(() => {
-        async function loadFaceModel() {
+        async function loadModels() {
             try {
-                await tf.ready();
-                const loadedModel = await blazeface.load();
-                setFaceModel(loadedModel);
-                console.log('BlazeFace model loaded');
-            } catch (err) {
-                console.error('Failed to load BlazeFace model:', err);
+                // await faceapi.tf.set == 'undefined'
+                // workaround for 'tf not ready' errors
+                await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+                setIsFaceApiModelsLoaded(true);
+                console.log('face-api.js models loaded');
+            } catch (error) {
+                console.error('Failed to load face-api.js models:', error);
+                // Handle error state appropriately, e.g., show a message to the user
             }
         }
-        loadFaceModel();
+        loadModels();
     }, []);
 
     const detectEmotion = useCallback(async () => {
@@ -46,118 +50,64 @@ export default function EmotionDetector() {
             typeof webcamRef.current !== "undefined" &&
             webcamRef.current !== null &&
             webcamRef.current.video?.readyState === 4 &&
-            model &&
-            faceModel
+            isFaceApiModelsLoaded
         ) {
             const video = webcamRef.current.video;
             const videoWidth = video.videoWidth;
             const videoHeight = video.videoHeight;
 
-            // Ensure canvas matches video dimensions
-            if (canvasRef.current) {
-                canvasRef.current.width = videoWidth;
-                canvasRef.current.height = videoHeight;
-            }
+            const displaySize = { width: videoWidth, height: videoHeight };
+            faceapi.matchDimensions(canvasRef.current!, displaySize);
 
             // Performance monitoring
             const now = performance.now();
             const delta = now - lastTimeRef.current;
             if (delta >= 1000) {
-                setFps(Math.round(1000 / (delta / (requestRef.current ? 1 : 1)))); // Rough estimate
+                setFps(Math.round(1000 / (delta / (requestRef.current ? 1 : 1))));
                 lastTimeRef.current = now;
             }
 
-            // Detect faces
-            const returnTensors = false;
-            const predictions = await faceModel.estimateFaces(video, returnTensors);
+            const detections = await faceapi.detectSingleFace(
+                video,
+                new faceapi.SsdMobilenetv1Options()
+            ).withFaceLandmarks().withFaceExpressions();
 
             const ctx = canvasRef.current?.getContext('2d');
             if (ctx) {
                 ctx.clearRect(0, 0, videoWidth, videoHeight);
             }
 
-            if (predictions.length > 0) {
-                // Use the first detected face
-                const start = predictions[0].topLeft as [number, number];
-                const end = predictions[0].bottomRight as [number, number];
-                const size = [end[0] - start[0], end[1] - start[1]];
+            if (detections) {
+                const resizedDetections = faceapi.resizeResults(detections, displaySize);
 
-                // Draw bounding box
-                if (ctx) {
-                    ctx.beginPath();
-                    ctx.lineWidth = 2;
-                    ctx.strokeStyle = '#00ff00';
-                    ctx.rect(start[0], start[1], size[0], size[1]);
-                    ctx.stroke();
-                }
+                // Draw detection bounding box, landmarks, and expressions
+                faceapi.draw.drawDetections(canvasRef.current!, resizedDetections);
+                faceapi.draw.drawFaceLandmarks(canvasRef.current!, resizedDetections);
+                faceapi.draw.drawFaceExpressions(canvasRef.current!, resizedDetections);
 
-                // Extract face tensor
-                const tfImg = tf.browser.fromPixels(video);
+                const expressions = resizedDetections.expressions;
+                const expressionArray = EMOTIONS.map(emotion => expressions[emotion.toLowerCase() as keyof typeof expressions] || 0);
 
-                // Crop the face
-                // tf.image.cropAndResize requires normalized coordinates [y1, x1, y2, x2]
-                // But simpler approach is to slice the tensor directly if we have pixel coords
-                // Tensor is [height, width, 3]
-                // Slice: [y, x, 0], [h, w, 3]
+                setPredictions(expressionArray);
 
-                // Ensure coordinates are within bounds
-                const x1 = Math.max(0, Math.floor(start[0]));
-                const y1 = Math.max(0, Math.floor(start[1]));
-                const width = Math.min(videoWidth - x1, Math.floor(size[0]));
-                const height = Math.min(videoHeight - y1, Math.floor(size[1]));
-
-                if (width > 0 && height > 0) {
-                    const faceTensor = tfImg.slice([y1, x1, 0], [height, width, 3]);
-
-                    // Resize to 48x48
-                    const resized = tf.image.resizeBilinear(faceTensor, [48, 48]);
-
-                    // Convert to grayscale using standard weights (0.299*R + 0.587*G + 0.114*B)
-                    // This matches OpenCV's cvtColor(BGR2GRAY) behavior
-                    const rgb = resized.div(255.0);
-                    const r = rgb.slice([0, 0, 0], [48, 48, 1]);
-                    const g = rgb.slice([0, 0, 1], [48, 48, 1]);
-                    const b = rgb.slice([0, 0, 2], [48, 48, 1]);
-
-                    const gray = r.mul(0.299).add(g.mul(0.587)).add(b.mul(0.114));
-                    const normalized = gray.expandDims(0); // [1, 48, 48, 1]
-
-                    // Inference
-                    const prediction = model.predict(normalized) as tf.Tensor;
-                    const data = await prediction.data();
-
-                    // Cleanup tensors
-                    faceTensor.dispose();
-                    resized.dispose();
-                    gray.dispose();
-                    normalized.dispose();
-                    prediction.dispose();
-
-                    // Update state
-                    const predArray = Array.from(data);
-                    setPredictions(predArray);
-
-                    const maxIndex = predArray.indexOf(Math.max(...predArray));
-                    setDominantEmotion(EMOTIONS[maxIndex]);
-                }
-
-                tfImg.dispose();
+                const maxEmotion = Object.keys(expressions).reduce((a, b) => expressions[a as keyof typeof expressions] > expressions[b as keyof typeof expressions] ? a : b);
+                setDominantEmotion(maxEmotion.charAt(0).toUpperCase() + maxEmotion.slice(1) as Emotion);
             } else {
-                // No face detected
-                // Optionally reset emotion or keep last known
+                // No face detected, reset predictions and dominant emotion
+                setPredictions(new Array(7).fill(0));
+                setDominantEmotion('Neutral');
             }
 
             if (isAnalyzing) {
                 requestRef.current = requestAnimationFrame(detectEmotion);
             }
         } else if (isAnalyzing) {
-            // Retry if video not ready
             requestRef.current = requestAnimationFrame(detectEmotion);
         }
-    }, [model, faceModel, isAnalyzing]);
+    }, [isFaceApiModelsLoaded, isAnalyzing]);
 
     useEffect(() => {
-        if (isAnalyzing && model && faceModel) {
+        if (isAnalyzing && isFaceApiModelsLoaded) {
             requestRef.current = requestAnimationFrame(detectEmotion);
         } else {
             if (requestRef.current) {
@@ -169,10 +119,9 @@ export default function EmotionDetector() {
                 cancelAnimationFrame(requestRef.current);
             }
         };
-    }, [isAnalyzing, model, faceModel, detectEmotion]);
+    }, [isAnalyzing, isFaceApiModelsLoaded, detectEmotion]);
 
     const saveReport = async () => {
-        if (!model) return;
 
         try {
             const screenshot = webcamRef.current?.getScreenshot();
@@ -209,10 +158,6 @@ export default function EmotionDetector() {
         }
     };
 
-    if (modelError) {
-        return <div className="text-red-500">Error loading model: {modelError}</div>;
-    }
-
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-6xl mx-auto p-4">
             <div className="lg:col-span-2 space-y-4">
@@ -239,7 +184,7 @@ export default function EmotionDetector() {
                         <div className="flex justify-center mt-6 gap-4">
                             <Button
                                 onClick={toggleAnalysis}
-                                disabled={isModelLoading || !faceModel}
+                                disabled={!isFaceApiModelsLoaded}
                                 size="lg"
                                 className={isAnalyzing ? "bg-red-500 hover:bg-red-600" : "bg-indigo-600 hover:bg-indigo-700"}
                             >

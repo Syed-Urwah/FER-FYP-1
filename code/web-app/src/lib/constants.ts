@@ -1,31 +1,31 @@
 export const EMOTIONS = [
     'Angry',
-    'Disgust',
-    'Fear',
+    'Disgusted',
+    'Fearful',
     'Happy',
     'Neutral',
     'Sad',
-    'Surprise'
+    'Surprised'
 ] as const;
 
 export type Emotion = typeof EMOTIONS[number];
 
 export const EMOTION_COLORS: Record<Emotion, string> = {
     Angry: 'text-red-500',
-    Disgust: 'text-green-600',
-    Fear: 'text-purple-500',
+    Disgusted: 'text-green-600',
+    Fearful: 'text-purple-500',
     Happy: 'text-yellow-500',
     Sad: 'text-blue-500',
-    Surprise: 'text-orange-500',
+    Surprised: 'text-orange-500',
     Neutral: 'text-gray-500',
 };
 
 export const EMOTION_EMOJIS: Record<Emotion, string> = {
     Angry: '😠',
-    Disgust: '🤢',
-    Fear: '😨',
+    Disgusted: '🤢',
+    Fearful: '😨',
     Happy: '😄',
     Sad: '😢',
-    Surprise: '😲',
+    Surprised: '😲',
     Neutral: '😐',
 };
